@@ -1,0 +1,27 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to SMRTScape",
+        "data": {
+          "base_url": "Base URL",
+          "username": "Username",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Failed to connect"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "SMRTScape options",
+        "data": {
+          "poll_interval": "Poll interval (seconds)"
+        }
+      }
+    }
+  }
+}

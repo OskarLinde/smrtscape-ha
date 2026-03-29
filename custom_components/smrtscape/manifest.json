@@ -1,0 +1,12 @@
+{
+  "domain": "smrtscape",
+  "name": "SMRTScape",
+  "codeowners": [],
+  "config_flow": true,
+  "documentation": "https://github.com/oskar/openclaw-smrtscape",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "loggers": ["custom_components.smrtscape"],
+  "requirements": [],
+  "version": "0.1.0"
+}
