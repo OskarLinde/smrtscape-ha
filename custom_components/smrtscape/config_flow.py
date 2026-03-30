@@ -5,6 +5,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
 from homeassistant.core import callback
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import SmrtScapeApiClient
 from .const import CONF_BASE_URL, CONF_POLL_INTERVAL, DEFAULT_BASE_URL, DEFAULT_POLL_INTERVAL, DOMAIN
@@ -21,7 +22,7 @@ class SmrtScapeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
 
             client = SmrtScapeApiClient(
-                session=self.hass.helpers.aiohttp_client.async_get_clientsession(),
+                session=async_get_clientsession(self.hass),
                 base_url=user_input[CONF_BASE_URL],
                 username=user_input[CONF_USERNAME],
                 password=user_input[CONF_PASSWORD],

@@ -13,53 +13,58 @@ Authentication appears to be a straightforward email/password login that returns
 
 ### Login
 
-`POST /api/v1/auth/login`
+The earlier assumption about a direct JSON login endpoint was wrong.
 
-Request body:
+From the compiled frontend JavaScript, the login service appears to use an API request with this authorization shape:
 
-```json
-{
-  "Email": "user@example.com",
-  "Password": "secret",
-  "RememberMe": false
-}
+```http
+Authorization: Basic ?email=<encoded_email>&password=<password>
 ```
 
-Observed response characteristics:
-- JSON object
-- includes `Token`
-- includes user metadata and administered account lists
+And the SPA's general authenticated requests use:
 
-Example fields observed in browser state:
-
-```json
-{
-  "Id": 28543,
-  "FName": "Tilde",
-  "LName": "Linde",
-  "Email": "tilde.s.linde@gmail.com",
-  "Token": "...",
-  "SecretId": "...",
-  "AccountsAdministered": [
-    {
-      "Id": 26830,
-      "OrganizationId": 29311,
-      "Name": "Residence"
-    }
-  ]
-}
+```http
+Authorization: Basic ?id=<user_id>&token=<token>
 ```
+
+The web `/welcome` form also exists and may establish browser session state, but the strongest evidence from the frontend code is that the SPA login path is implemented through a custom Basic-style authorization header rather than a normal JSON login payload.
+
+Observed login-related frontend behavior:
+- user service method: `loginUser(email, password)`
+- uses `apiRequestWithBasicAuth(...)`
+- method shown in compiled code: `GET`
+- login success stores:
+  - `currentUser`
+  - `accessToken = e.Token`
+  - `userId = e.Id`
+
+Open question:
+- the exact login URL still needs to be pinned down from the minified bundle, but the header scheme is now much clearer.
 
 ### Authenticated requests
 
-Subsequent API requests use:
+Subsequent API requests do not appear to use a standard bearer token.
+
+From the compiled SPA code, the app constructs authorization like this:
 
 ```http
-Authorization: Bearer <token>
-Accept: application/json, text/plain, */*
+Authorization: Basic ?id=<user_id>&token=<token>
+Content-Type: application/json
+Accept: application/json
 ```
 
-Observed browser behavior suggests auth is primarily token-based, not cookie-based.
+For login itself, the SPA code also uses a nonstandard Basic-style header:
+
+```http
+Authorization: Basic ?email=<encoded_email>&password=<password>
+```
+
+Important corrections:
+- using `Authorization: Bearer <token>` is wrong
+- using the raw token alone is also wrong for normal API calls
+- the compiled frontend indicates the expected format is `Basic ?id=<user_id>&token=<token>`
+
+Observed browser behavior suggests a combination of authenticated web session + this custom authorization-header scheme.
 
 ## Discovery flow
 
@@ -67,7 +72,7 @@ Observed browser behavior suggests auth is primarily token-based, not cookie-bas
 Get the user object and administered account IDs.
 
 ### 2) Account details
-`GET /api/v1/accounts/{account_id}`
+`GET /api/v1/accounts/{account_id}?detailed=true`
 
 Purpose:
 - fetch account detail
@@ -79,7 +84,7 @@ Observed useful fields:
 - organization/account metadata
 
 ### 3) Location details
-`GET /api/v1/locations/{location_id}`
+`GET /api/v1/locations/{location_id}?detailed=true&includeSceneScheduleSummary=true`
 
 Purpose:
 - fetch location detail
@@ -99,7 +104,7 @@ Observed useful fields:
 ## Scene endpoints
 
 ### List scenes for a location
-`GET /api/v1/scenes/location/{location_id}`
+`GET /api/v1/scenes/byLocation/{location_id}`
 
 Observed scene fields:
 - `Id`
@@ -111,7 +116,7 @@ Observed scene fields:
 - `Metaphor`
 
 ### Get scene status for a location
-`GET /api/v1/scenes/status/location/{location_id}`
+`GET /api/v1/scenes/status/byLocation/{location_id}`
 
 Purpose:
 - current scene state
@@ -141,9 +146,14 @@ Observed fields:
 - `TroubleshootingInfo`
 
 ### Get human-readable schedule summaries
-`GET /api/v1/scenes/schedulesummary/location/{location_id}`
+There may be a standalone endpoint, but the browser also receives schedule summary data embedded in:
 
-Observed fields:
+`GET /api/v1/locations/{location_id}?detailed=true&includeSceneScheduleSummary=true`
+
+Observed field on the location payload:
+- `SceneScheduleSummaryList`
+
+Observed summary fields:
 - `Id`
 - `Schedule`
 
