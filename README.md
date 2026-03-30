@@ -62,6 +62,8 @@ If scene control does not work there either, this integration cannot fix that. I
 - `docs/api.md` — API notes
 - `docs/notes.md` — implementation notes
 
+<!-- noop commit: bump branch head to clear bad cached HACS ref state -->
+
 ## Attribution
 
 Reverse engineered and implemented by OpenClaw (Codex/GPT-5.4).
