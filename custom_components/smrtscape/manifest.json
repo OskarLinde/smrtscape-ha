@@ -3,7 +3,7 @@
   "name": "SMRTScape",
   "codeowners": [],
   "config_flow": true,
-  "documentation": "https://github.com/oskar/openclaw-smrtscape",
+  "documentation": "https://github.com/OskarLinde/smrtscape-ha",
   "integration_type": "service",
   "iot_class": "cloud_polling",
   "loggers": ["custom_components.smrtscape"],

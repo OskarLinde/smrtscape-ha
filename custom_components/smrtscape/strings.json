@@ -11,7 +11,8 @@
       }
     },
     "error": {
-      "cannot_connect": "Failed to connect"
+      "cannot_connect": "Failed to connect",
+      "invalid_base_url": "Base URL must be https://smrtscape.com"
     }
   },
   "options": {

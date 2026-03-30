@@ -1,0 +1,9 @@
+{
+  "name": "SMRTScape",
+  "country": "US",
+  "homeassistant": "2026.3.1",
+  "domains": ["smrtscape"],
+  "content_in_root": false,
+  "filename": "custom_components/smrtscape/manifest.json",
+  "render_readme": true
+}

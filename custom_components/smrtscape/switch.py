@@ -2,10 +2,26 @@ from __future__ import annotations
 
 from homeassistant.components.switch import SwitchEntity
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .api import SmrtScapeGatewayOfflineError
 from .const import ATTR_LOCATION_ID, ATTR_SCENE_ID, DOMAIN
 from .entity import SmrtScapeCoordinatorEntity
+
+
+def _clean_timestamp(value):
+    if not value or not isinstance(value, str):
+        return value
+    if value.startswith("1753-01-01") or value.startswith("0001-01-01"):
+        return None
+    return value
+
+
+def _clean_schedule_summary(value):
+    if not isinstance(value, str):
+        return value
+    return value.replace("<br /><br />", "").replace("<br />", " ").strip()
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
@@ -35,6 +51,10 @@ class SmrtScapeSceneSwitch(SmrtScapeCoordinatorEntity, SwitchEntity):
     @property
     def extra_state_attributes(self) -> dict:
         status = self.scene_data.get("status", {})
+        schedule_summary = _clean_schedule_summary(
+            self.scene_data.get("schedule_summary", {}).get("Schedule")
+        )
+
         return {
             ATTR_LOCATION_ID: self.location_id,
             ATTR_SCENE_ID: self.scene_id,
@@ -44,14 +64,30 @@ class SmrtScapeSceneSwitch(SmrtScapeCoordinatorEntity, SwitchEntity):
             "is_forced_on": status.get("IsSceneForcedOn"),
             "is_forced_off": status.get("IsSceneForcedOff"),
             "is_scheduled_on": status.get("IsSceneScheduledOn"),
-            "last_gateway_communication": status.get("LastGatewayCommunication"),
-            "schedule_summary": self.scene_data.get("schedule_summary", {}).get("Schedule"),
+            "is_scene_on": status.get("IsSceneOn"),
+            "gateway_online": status.get("IsGatewayOnline"),
+            "last_gateway_communication": _clean_timestamp(status.get("LastGatewayCommunication")),
+            "current_scene_time": _clean_timestamp(status.get("CurrentSceneTime")),
+            "when_scene_force_released": _clean_timestamp(status.get("WhenSceneForceReleased")),
+            "next_scheduled_on_time": _clean_timestamp(status.get("NextScheduledOnTime")),
+            "next_scheduled_off_time": _clean_timestamp(status.get("NextScheduledOffTime")),
+            "last_scheduled_on_time": _clean_timestamp(status.get("LastScheduledOnTime")),
+            "last_scheduled_off_time": _clean_timestamp(status.get("LastScheduledOffTime")),
+            "last_scene_force_on_time": _clean_timestamp(status.get("LastSceneForceOnTime")),
+            "last_scene_force_off_time": _clean_timestamp(status.get("LastSceneForceOffTime")),
+            "schedule_summary": schedule_summary,
         }
 
     async def async_turn_on(self, **kwargs) -> None:
-        await self.hass.data[DOMAIN][self.config_entry.entry_id]["client"].async_set_scene(self.scene_id, True)
+        try:
+            await self.hass.data[DOMAIN][self.config_entry.entry_id]["client"].async_set_scene(self.scene_id, True)
+        except SmrtScapeGatewayOfflineError as err:
+            raise HomeAssistantError("Gateway offline") from err
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs) -> None:
-        await self.hass.data[DOMAIN][self.config_entry.entry_id]["client"].async_set_scene(self.scene_id, False)
+        try:
+            await self.hass.data[DOMAIN][self.config_entry.entry_id]["client"].async_set_scene(self.scene_id, False)
+        except SmrtScapeGatewayOfflineError as err:
+            raise HomeAssistantError("Gateway offline") from err
         await self.coordinator.async_request_refresh()

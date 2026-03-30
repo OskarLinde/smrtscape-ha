@@ -1,6 +1,6 @@
 # SMRTScape API notes
 
-Reverse-engineered from the SMRTScape web UI at `https://smrtscape.com`.
+Reverse-engineered from the SMRTScape web UI at `https://smrtscape.com` and validated against one working account/location.
 
 ## Base URL
 
@@ -9,67 +9,67 @@ Reverse-engineered from the SMRTScape web UI at `https://smrtscape.com`.
 
 ## Authentication
 
-Authentication appears to be a straightforward email/password login that returns a bearer token.
+SMRTScape does **not** use a standard bearer-token API flow.
 
-### Login
+From the compiled frontend bundle, login and subsequent API calls use custom `Authorization` header formats.
 
-The earlier assumption about a direct JSON login endpoint was wrong.
+### Login request
 
-From the compiled frontend JavaScript, the login service appears to use an API request with this authorization shape:
+The SPA login flow calls:
+
+`GET /api/v1/users?detailed=true`
+
+with a header like:
 
 ```http
 Authorization: Basic ?email=<encoded_email>&password=<password>
+Accept: application/json, text/plain, */*
+X-Requested-With: XMLHttpRequest
 ```
 
-And the SPA's general authenticated requests use:
+Notes:
+- email encoding in the frontend at minimum replaces `+` with `%2b`
+- the response is a user object, not just a token blob
+- successful response includes both `Id` and `Token`
 
-```http
-Authorization: Basic ?id=<user_id>&token=<token>
-```
-
-The web `/welcome` form also exists and may establish browser session state, but the strongest evidence from the frontend code is that the SPA login path is implemented through a custom Basic-style authorization header rather than a normal JSON login payload.
-
-Observed login-related frontend behavior:
-- user service method: `loginUser(email, password)`
+Observed login-related frontend behavior from the compiled bundle:
+- service method: `loginUser(email, password)`
 - uses `apiRequestWithBasicAuth(...)`
-- method shown in compiled code: `GET`
-- login success stores:
+- request method shown in compiled code: `GET`
+- on success, frontend stores:
   - `currentUser`
   - `accessToken = e.Token`
   - `userId = e.Id`
 
-Open question:
-- the exact login URL still needs to be pinned down from the minified bundle, but the header scheme is now much clearer.
+### Authenticated API requests
 
-### Authenticated requests
-
-Subsequent API requests do not appear to use a standard bearer token.
-
-From the compiled SPA code, the app constructs authorization like this:
+After login, the SPA uses:
 
 ```http
 Authorization: Basic ?id=<user_id>&token=<token>
 Content-Type: application/json
 Accept: application/json
+X-Requested-With: XMLHttpRequest
 ```
 
-For login itself, the SPA code also uses a nonstandard Basic-style header:
-
-```http
-Authorization: Basic ?email=<encoded_email>&password=<password>
-```
-
-Important corrections:
-- using `Authorization: Bearer <token>` is wrong
-- using the raw token alone is also wrong for normal API calls
-- the compiled frontend indicates the expected format is `Basic ?id=<user_id>&token=<token>`
-
-Observed browser behavior suggests a combination of authenticated web session + this custom authorization-header scheme.
+Important corrections from earlier assumptions:
+- `Authorization: Bearer <token>` is wrong
+- raw token alone is wrong for normal API requests
+- the compiled frontend indicates `Basic ?id=<user_id>&token=<token>` is the intended auth shape
 
 ## Discovery flow
 
 ### 1) Login
-Get the user object and administered account IDs.
+Fetch the user object from:
+
+`GET /api/v1/users?detailed=true`
+
+Useful fields observed on the response:
+- `Id`
+- `Email`
+- `Token`
+- `AccountsAdministered`
+- `OrganizationsAdministered`
 
 ### 2) Account details
 `GET /api/v1/accounts/{account_id}?detailed=true`
@@ -79,7 +79,7 @@ Purpose:
 - identify available locations
 
 Observed useful fields:
-- `_locations`
+- `Locations`
 - `ConnectedDevices`
 - organization/account metadata
 
@@ -96,7 +96,7 @@ Observed useful fields:
 - `Name`
 - `Description`
 - `Latitude` / `Longitude`
-- `ConnectedDevice`
+- `ConnectedDevices`
 - `SceneScheduleSummaryList`
 - `Themes`
 - `DeviceGroups`
@@ -106,6 +106,15 @@ Observed useful fields:
 ### List scenes for a location
 `GET /api/v1/scenes/byLocation/{location_id}`
 
+Observed response shape:
+
+```json
+{
+  "SceneScheduleSummaryList": [...],
+  "Scenes": [...]
+}
+```
+
 Observed scene fields:
 - `Id`
 - `Name`
@@ -114,9 +123,17 @@ Observed scene fields:
 - `AccountId`
 - `OrdinalPosition`
 - `Metaphor`
+- `ImageId`
+- `ImageAssetId`
+- `WhenImageCreated`
+- `WhenImageLastUpdated`
+- `ImageAsset`
 
 ### Get scene status for a location
 `GET /api/v1/scenes/status/byLocation/{location_id}`
+
+Observed response shape:
+- JSON array of scene status objects
 
 Purpose:
 - current scene state
@@ -145,13 +162,33 @@ Observed fields:
 - `NextStatusText`
 - `TroubleshootingInfo`
 
-### Get human-readable schedule summaries
-There may be a standalone endpoint, but the browser also receives schedule summary data embedded in:
+### Scene image metadata
+When a scene has an uploaded image, the scene payload may include:
 
-`GET /api/v1/locations/{location_id}?detailed=true&includeSceneScheduleSummary=true`
+- `ImageId`
+- `ImageAssetId`
+- `WhenImageCreated`
+- `WhenImageLastUpdated`
+- `ImageAsset`
+  - `Id`
+  - `Uid`
+  - `ImageAssetItems[]`
+    - `Uri`
+    - `Name`
+    - `Width`
+    - `Height`
+    - `WhenCreated`
 
-Observed field on the location payload:
-- `SceneScheduleSummaryList`
+Observed behavior:
+- the blob `Uri` is publicly reachable
+- but storage may return `application/octet-stream` instead of a specific image MIME type
+- the Home Assistant integration therefore fetches image bytes directly and infers image type when needed
+- the integration caches image bytes in memory and invalidates the cache when URL or image-update metadata changes
+
+### Schedule summary data
+Schedule summary data is available on both:
+- `GET /api/v1/locations/{location_id}?detailed=true&includeSceneScheduleSummary=true`
+- and also in the wrapper returned by `GET /api/v1/scenes/byLocation/{location_id}`
 
 Observed summary fields:
 - `Id`
@@ -167,26 +204,34 @@ Examples:
 ### Force scene on/off
 `PUT /api/v1/scenes/{scene_id}/force?action=on|off&duration=0`
 
-Observed directly from browser interaction.
+Observed directly from browser interaction and validated through the Home Assistant integration.
 
 Examples:
 
 Turn on:
 ```http
 PUT /api/v1/scenes/41244/force?action=on&duration=0
-Authorization: Bearer <token>
+Authorization: Basic ?id=<user_id>&token=<token>
 ```
 
 Turn off:
 ```http
 PUT /api/v1/scenes/41244/force?action=off&duration=0
-Authorization: Bearer <token>
+Authorization: Basic ?id=<user_id>&token=<token>
 ```
 
 Interpretation:
 - `action` is explicit on/off
-- `duration=0` appears to mean immediate manual force with no explicit timer
-- nonzero duration is not yet verified
+- `duration=0` means non-timed force on/off behavior
+- nonzero duration likely supports temporary/timed force-on, but that has not been formally implemented in the HA integration
+
+### Gateway offline behavior
+If the gateway is offline, the cloud may return HTTP 500 on force requests with a message like:
+
+- `Cannot perform the requested operation, the gateway is not communicating.`
+
+The HA integration maps this to a cleaner user-facing error:
+- `Gateway offline`
 
 ## Observed account/location example
 
@@ -212,26 +257,26 @@ The SPA stores substantial state in `localStorage`, including:
 Session storage also held:
 - `WhatsNewClosed=true`
 
-This is useful for reverse engineering, but a Home Assistant integration should ignore browser storage and instead authenticate directly through the login endpoint.
+This was useful for reverse engineering, but the Home Assistant integration authenticates directly with the API rather than relying on browser storage.
 
-## Suggested HA polling model
+## Current HA integration model
 
-1. login
-2. fetch first administered account
-3. fetch locations for the account
-4. for each location:
-   - fetch scenes
+1. login via `GET /api/v1/users?detailed=true` using the custom login header
+2. read first administered account from the user object
+3. fetch account detail
+4. fetch locations
+5. for each location:
+   - fetch location detail
+   - fetch scenes wrapper
    - fetch scene statuses
-   - fetch schedule summaries
-5. merge by scene ID
-6. expose each scene as a switch entity
-7. on toggle, call `PUT /scenes/{scene_id}/force`
+6. merge scene metadata + status + schedule summary by scene ID
+7. expose each scene as a switch entity
+8. expose scene status/next-status as sensors
+9. expose gateway online/offline as a binary sensor
 
 ## Open questions
 
-- exact full login response schema
-- whether refresh tokens or token expiry metadata exist
-- whether a single bulk endpoint can replace multiple scene reads
-- whether `duration` supports timed force-on/force-off actions
-- whether there are rate limits
-- whether gateway-offline state affects command acceptance or only state freshness
+- whether Toro may change the auth-header scheme in the web app
+- whether nonzero `duration` values support exactly the app’s timed-on behavior
+- whether there are rate limits worth explicitly handling
+- whether there are additional bulk endpoints worth using later

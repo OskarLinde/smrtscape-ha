@@ -9,7 +9,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .api import SmrtScapeApiClient
+from .api import SmrtScapeApiClient, SmrtScapeApiError
 from .const import CONF_BASE_URL, CONF_POLL_INTERVAL, DEFAULT_POLL_INTERVAL, DOMAIN, PLATFORMS
 
 _LOGGER = logging.getLogger(__name__)
@@ -27,8 +27,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def _async_update_data():
         try:
             return await client.async_get_state()
+        except SmrtScapeApiError as err:
+            raise UpdateFailed(str(err)) from err
         except Exception as err:
-            raise UpdateFailed(f"Error communicating with API: {err}") from err
+            raise UpdateFailed("Unexpected SMRTScape integration error") from err
 
     coordinator = DataUpdateCoordinator(
         hass,
